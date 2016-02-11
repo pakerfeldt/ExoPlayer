@@ -23,6 +23,8 @@ import com.google.android.exoplayer.dash.mpd.SegmentBase.SingleSegmentBase;
 
 import android.net.Uri;
 
+import java.util.List;
+
 /**
  * A DASH representation.
  */
@@ -154,7 +156,7 @@ public abstract class Representation implements FormatWrapper {
     /**
      * The uri of the single segment.
      */
-    public final Uri uri;
+    //public final Uri uri;
 
     /**
      * The content length, or -1 if unknown.
@@ -177,11 +179,11 @@ public abstract class Representation implements FormatWrapper {
      * @param contentLength The content length, or -1 if unknown.
      */
     public static SingleSegmentRepresentation newInstance(String contentId, long revisionId,
-        Format format, String uri, long initializationStart, long initializationEnd,
+        Format format, List<String> uris, long initializationStart, long initializationEnd,
         long indexStart, long indexEnd, String customCacheKey, long contentLength) {
-      RangedUri rangedUri = new RangedUri(uri, null, initializationStart,
+      RangedUri rangedUri = new RangedUri(uris, null, initializationStart,
           initializationEnd - initializationStart + 1);
-      SingleSegmentBase segmentBase = new SingleSegmentBase(rangedUri, 1, 0, uri, indexStart,
+      SingleSegmentBase segmentBase = new SingleSegmentBase(rangedUri, 1, 0, uris, indexStart,
           indexEnd - indexStart + 1);
       return new SingleSegmentRepresentation(contentId, revisionId,
           format, segmentBase, customCacheKey, contentLength);
@@ -198,13 +200,13 @@ public abstract class Representation implements FormatWrapper {
     public SingleSegmentRepresentation(String contentId, long revisionId, Format format,
         SingleSegmentBase segmentBase, String customCacheKey, long contentLength) {
       super(contentId, revisionId, format, segmentBase, customCacheKey);
-      this.uri = Uri.parse(segmentBase.uri);
+      //this.uri = segmentBase.uris;
       this.indexUri = segmentBase.getIndex();
       this.contentLength = contentLength;
       // If we have an index uri then the index is defined externally, and we shouldn't return one
       // directly. If we don't, then we can't do better than an index defining a single segment.
       segmentIndex = indexUri != null ? null
-          : new DashSingleSegmentIndex(new RangedUri(segmentBase.uri, null, 0, contentLength));
+          : new DashSingleSegmentIndex(new RangedUri(segmentBase.uris, null, 0, contentLength));
     }
 
     @Override

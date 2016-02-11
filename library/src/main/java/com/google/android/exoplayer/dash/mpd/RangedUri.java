@@ -20,6 +20,8 @@ import com.google.android.exoplayer.util.UriUtil;
 
 import android.net.Uri;
 
+import java.util.List;
+
 /**
  * Defines a range of data located at a {@link Uri}.
  */
@@ -40,7 +42,7 @@ public final class RangedUri {
   // URLs to be expressed concisely in the form of a single BaseURL and many relative paths. Note
   // that this optimization relies on the same object being passed as the base URI to many
   // instances of this class.
-  private final String baseUri;
+  private final List<String> baseUris;
   private final String referenceUri;
 
   private int hashCode;
@@ -48,26 +50,33 @@ public final class RangedUri {
   /**
    * Constructs an ranged uri.
    *
-   * @param baseUri A uri that can form the base of the uri defined by the instance.
+   * @param baseUris A list of uris that can form the base of the uri defined by the instance.
    * @param referenceUri A reference uri that should be resolved with respect to {@code baseUri}.
    * @param start The (zero based) index of the first byte of the range.
    * @param length The length of the range, or -1 to indicate that the range is unbounded.
    */
-  public RangedUri(String baseUri, String referenceUri, long start, long length) {
-    Assertions.checkArgument(baseUri != null || referenceUri != null);
-    this.baseUri = baseUri;
+  public RangedUri(List<String> baseUris, String referenceUri, long start, long length) {
+    Assertions.checkArgument(baseUris != null || baseUris.isEmpty() || referenceUri != null);
+    this.baseUris = baseUris;
     this.referenceUri = referenceUri;
     this.start = start;
     this.length = length;
   }
 
+  public List<String> getBaseUrls() {
+    return baseUris;
+  }
+
+  public Uri getUri(String baseUrl) {
+    return UriUtil.resolveToUri(baseUrl, referenceUri);
+  }
   /**
    * Returns the {@link Uri} represented by the instance.
    *
    * @return The {@link Uri} represented by the instance.
    */
   public Uri getUri() {
-    return UriUtil.resolveToUri(baseUri, referenceUri);
+    return getUri(baseUris.get(0));
   }
 
   /**
@@ -76,7 +85,7 @@ public final class RangedUri {
    * @return The uri represented by the instance.
    */
   public String getUriString() {
-    return UriUtil.resolve(baseUri, referenceUri);
+    return UriUtil.resolve(baseUris.get(0), referenceUri);
   }
 
   /**
@@ -94,10 +103,10 @@ public final class RangedUri {
     if (other == null || !getUriString().equals(other.getUriString())) {
       return null;
     } else if (length != -1 && start + length == other.start) {
-      return new RangedUri(baseUri, referenceUri, start,
+      return new RangedUri(baseUris, referenceUri, start,
           other.length == -1 ? -1 : length + other.length);
     } else if (other.length != -1 && other.start + other.length == start) {
-      return new RangedUri(baseUri, referenceUri, other.start,
+      return new RangedUri(baseUris, referenceUri, other.start,
           length == -1 ? -1 : other.length + length);
     } else {
       return null;

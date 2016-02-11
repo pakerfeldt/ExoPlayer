@@ -21,6 +21,7 @@ import com.google.android.exoplayer.MediaFormat;
 import com.google.android.exoplayer.TimeRange;
 import com.google.android.exoplayer.TimeRange.DynamicTimeRange;
 import com.google.android.exoplayer.TimeRange.StaticTimeRange;
+import com.google.android.exoplayer.chunk.BaseUrlSelector;
 import com.google.android.exoplayer.chunk.Chunk;
 import com.google.android.exoplayer.chunk.ChunkExtractorWrapper;
 import com.google.android.exoplayer.chunk.ChunkOperationHolder;
@@ -90,6 +91,10 @@ public class DashChunkSource implements ChunkSource, Output {
      */
     public void onAvailableRangeChanged(int sourceId, TimeRange availableRange);
 
+    public void onChunkError(String baseUrl);
+
+    public void onChunkCompleted(String baseUrl);
+
   }
 
   /**
@@ -121,6 +126,7 @@ public class DashChunkSource implements ChunkSource, Output {
   private final long[] availableRangeValues;
   private final boolean live;
   private final int eventSourceId;
+  private final BaseUrlSelector baseUrlSelector;
 
   private MediaPresentationDescription currentManifest;
   private MediaPresentationDescription processedManifest;
@@ -167,7 +173,7 @@ public class DashChunkSource implements ChunkSource, Output {
       FormatEvaluator adaptiveFormatEvaluator, long durationMs, int adaptationSetType,
       List<Representation> representations) {
     this(buildManifest(durationMs, adaptationSetType, representations), trackSelector, dataSource,
-        adaptiveFormatEvaluator);
+        adaptiveFormatEvaluator, null, null, new BaseUrlSelector.FirstBaseUrlSelector());
   }
 
   /**
@@ -179,9 +185,10 @@ public class DashChunkSource implements ChunkSource, Output {
    * @param adaptiveFormatEvaluator For adaptive tracks, selects from the available formats.
    */
   public DashChunkSource(MediaPresentationDescription manifest, DashTrackSelector trackSelector,
-      DataSource dataSource, FormatEvaluator adaptiveFormatEvaluator) {
+      DataSource dataSource, FormatEvaluator adaptiveFormatEvaluator, Handler eventHandler,
+      EventListener eventListener, BaseUrlSelector baseUrlSelector) {
     this(null, manifest, trackSelector, dataSource, adaptiveFormatEvaluator, new SystemClock(), 0,
-        0, false, null, null, 0);
+        0, false, eventHandler, eventListener, 0, baseUrlSelector);
   }
 
   /**
@@ -211,10 +218,10 @@ public class DashChunkSource implements ChunkSource, Output {
   public DashChunkSource(ManifestFetcher<MediaPresentationDescription> manifestFetcher,
       DashTrackSelector trackSelector, DataSource dataSource,
       FormatEvaluator adaptiveFormatEvaluator, long liveEdgeLatencyMs, long elapsedRealtimeOffsetMs,
-      Handler eventHandler, EventListener eventListener, int eventSourceId) {
+      Handler eventHandler, EventListener eventListener, int eventSourceId, BaseUrlSelector baseUrlSelector) {
     this(manifestFetcher, manifestFetcher.getManifest(), trackSelector,
         dataSource, adaptiveFormatEvaluator, new SystemClock(), liveEdgeLatencyMs * 1000,
-        elapsedRealtimeOffsetMs * 1000, true, eventHandler, eventListener, eventSourceId);
+        elapsedRealtimeOffsetMs * 1000, true, eventHandler, eventListener, eventSourceId, baseUrlSelector);
   }
 
   /**
@@ -244,11 +251,11 @@ public class DashChunkSource implements ChunkSource, Output {
       DashTrackSelector trackSelector, DataSource dataSource,
       FormatEvaluator adaptiveFormatEvaluator, long liveEdgeLatencyMs, long elapsedRealtimeOffsetMs,
       boolean startAtLiveEdge, Handler eventHandler, EventListener eventListener,
-      int eventSourceId) {
+      int eventSourceId, BaseUrlSelector baseUrlSelector) {
     this(manifestFetcher, manifestFetcher.getManifest(), trackSelector,
         dataSource, adaptiveFormatEvaluator, new SystemClock(), liveEdgeLatencyMs * 1000,
         elapsedRealtimeOffsetMs * 1000, startAtLiveEdge, eventHandler, eventListener,
-        eventSourceId);
+        eventSourceId, baseUrlSelector);
   }
 
   /* package */ DashChunkSource(ManifestFetcher<MediaPresentationDescription> manifestFetcher,
@@ -256,7 +263,7 @@ public class DashChunkSource implements ChunkSource, Output {
       DataSource dataSource, FormatEvaluator adaptiveFormatEvaluator,
       Clock systemClock, long liveEdgeLatencyUs, long elapsedRealtimeOffsetUs,
       boolean startAtLiveEdge, Handler eventHandler, EventListener eventListener,
-      int eventSourceId) {
+      int eventSourceId, BaseUrlSelector baseUrlSelector) {
     this.manifestFetcher = manifestFetcher;
     this.currentManifest = initialManifest;
     this.trackSelector = trackSelector;
@@ -271,6 +278,7 @@ public class DashChunkSource implements ChunkSource, Output {
     this.eventSourceId = eventSourceId;
     this.evaluation = new Evaluation();
     this.availableRangeValues = new long[2];
+    this.baseUrlSelector = baseUrlSelector;
     periodHolders = new SparseArray<>();
     tracks = new ArrayList<>();
     live = initialManifest.dynamic;
@@ -515,9 +523,10 @@ public class DashChunkSource implements ChunkSource, Output {
         representationHolder.mediaFormat = initializationChunk.getFormat();
       }
       if (initializationChunk.hasSeekMap()) {
+        List<String> uris = new ArrayList<>(1);
+        uris.add(initializationChunk.dataSpec.uri.toString());
         representationHolder.segmentIndex = new DashWrappingSegmentIndex(
-            (ChunkIndex) initializationChunk.getSeekMap(),
-            initializationChunk.dataSpec.uri.toString());
+            (ChunkIndex) initializationChunk.getSeekMap(), uris);
       }
 
       // The null check avoids overwriting drmInitData obtained from the manifest with drmInitData
@@ -684,7 +693,8 @@ public class DashChunkSource implements ChunkSource, Output {
     } else {
       requestUri = indexUri;
     }
-    DataSpec dataSpec = new DataSpec(requestUri.getUri(), requestUri.start, requestUri.length,
+    String baseUrl = baseUrlSelector.getBaseUrl(requestUri.getBaseUrls());
+    DataSpec dataSpec = new DataSpec(requestUri.getUri(baseUrl), requestUri.start, requestUri.length,
         representation.getCacheKey());
     return new InitializationChunk(dataSource, dataSpec, trigger, representation.format,
         extractor, manifestIndex);
@@ -698,7 +708,8 @@ public class DashChunkSource implements ChunkSource, Output {
     long startTimeUs = representationHolder.getSegmentStartTimeUs(segmentNum);
     long endTimeUs = representationHolder.getSegmentEndTimeUs(segmentNum);
     RangedUri segmentUri = representationHolder.getSegmentUrl(segmentNum);
-    DataSpec dataSpec = new DataSpec(segmentUri.getUri(), segmentUri.start, segmentUri.length,
+    String baseUrl = baseUrlSelector.getBaseUrl(segmentUri.getBaseUrls());
+    DataSpec dataSpec = new DataSpec(segmentUri.getUri(baseUrl), segmentUri.start, segmentUri.length,
         representation.getCacheKey());
 
     long sampleOffsetUs = periodHolder.startTimeUs - representation.presentationTimeOffsetUs;
