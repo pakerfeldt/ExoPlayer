@@ -91,9 +91,9 @@ public class DashChunkSource implements ChunkSource, Output {
      */
     public void onAvailableRangeChanged(int sourceId, TimeRange availableRange);
 
-    public void onChunkError(String baseUrl);
+    public void onChunkLoadError(Chunk chunk, Exception e);
 
-    public void onChunkCompleted(String baseUrl);
+    public void onChunkCompleted(Chunk chunk);
 
   }
 
@@ -535,11 +535,12 @@ public class DashChunkSource implements ChunkSource, Output {
         periodHolder.drmInitData = initializationChunk.getDrmInitData();
       }
     }
+    notifyChunkLoadCompleted(chunk);
   }
 
   @Override
   public void onChunkLoadError(Chunk chunk, Exception e) {
-    // Do nothing.
+    notifyChunkLoadError(chunk, e);
   }
 
   @Override
@@ -827,6 +828,28 @@ public class DashChunkSource implements ChunkSource, Output {
         @Override
         public void run() {
           eventListener.onAvailableRangeChanged(eventSourceId, seekRange);
+        }
+      });
+    }
+  }
+
+  private void notifyChunkLoadCompleted(final Chunk chunk) {
+    if (eventHandler != null && eventListener != null) {
+      eventHandler.post(new Runnable() {
+        @Override
+        public void run() {
+          eventListener.onChunkCompleted(chunk);
+        }
+      });
+    }
+  }
+
+  private void notifyChunkLoadError(final Chunk chunk, final Exception e) {
+    if (eventHandler != null && eventListener != null) {
+      eventHandler.post(new Runnable() {
+        @Override
+        public void run() {
+          eventListener.onChunkLoadError(chunk, e);
         }
       });
     }
