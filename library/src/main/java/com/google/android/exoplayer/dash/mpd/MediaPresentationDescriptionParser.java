@@ -118,6 +118,7 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
     UtcTimingElement utcTiming = null;
     String location = null;
 
+    List<String> baseUrls = new ArrayList<>();
     List<Period> periods = new ArrayList<>();
     long nextPeriodStartMs = dynamic ? -1 : 0;
     boolean seenEarlyAccessPeriod = false;
@@ -125,16 +126,13 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
     do {
       xpp.next();
       if (ParserUtil.isStartTag(xpp, "BaseURL")) {
-        if (!seenFirstBaseUrl) {
-          baseUrl = parseBaseUrl(xpp, baseUrl);
-          seenFirstBaseUrl = true;
-        }
+        baseUrls.add(parseBaseUrl(xpp, baseUrl));
       } else if (ParserUtil.isStartTag(xpp, "UTCTiming")) {
         utcTiming = parseUtcTiming(xpp);
       } else if (ParserUtil.isStartTag(xpp, "Location")) {
         location = xpp.nextText();
       } else if (ParserUtil.isStartTag(xpp, "Period") && !seenEarlyAccessPeriod) {
-        Pair<Period, Long> periodWithDurationMs = parsePeriod(xpp, baseUrl, nextPeriodStartMs);
+        Pair<Period, Long> periodWithDurationMs = parsePeriod(xpp, baseUrls, nextPeriodStartMs);
         Period period = periodWithDurationMs.first;
         if (period.startMs == -1) {
           if (dynamic) {
@@ -187,7 +185,7 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
     return new UtcTimingElement(schemeIdUri, value);
   }
 
-  protected Pair<Period, Long> parsePeriod(XmlPullParser xpp, String baseUrl, long defaultStartMs)
+  protected Pair<Period, Long> parsePeriod(XmlPullParser xpp, List<String> parentBaseUrls, long defaultStartMs)
       throws XmlPullParserException, IOException {
     String id = xpp.getAttributeValue(null, "id");
     long startMs = parseDuration(xpp, "start", defaultStartMs);
@@ -198,15 +196,15 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
     do {
       xpp.next();
       if (ParserUtil.isStartTag(xpp, "BaseURL")) {
-        baseUrls.add(parseBaseUrl(xpp, baseUrl)); // TODO: What baseUrl to use for relative resolutions?
+        baseUrls.addAll(parseBaseUrls(xpp, parentBaseUrls));
       } else if (ParserUtil.isStartTag(xpp, "AdaptationSet")) {
-        adaptationSets.add(parseAdaptationSet(xpp, baseUrls, segmentBase));
+        adaptationSets.add(parseAdaptationSet(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, segmentBase));
       } else if (ParserUtil.isStartTag(xpp, "SegmentBase")) {
-        segmentBase = parseSegmentBase(xpp, baseUrls, null);
+        segmentBase = parseSegmentBase(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, null);
       } else if (ParserUtil.isStartTag(xpp, "SegmentList")) {
-        segmentBase = parseSegmentList(xpp, baseUrls, null);
+        segmentBase = parseSegmentList(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, null);
       } else if (ParserUtil.isStartTag(xpp, "SegmentTemplate")) {
-        segmentBase = parseSegmentTemplate(xpp, baseUrls, null);
+        segmentBase = parseSegmentTemplate(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, null);
       }
     } while (!ParserUtil.isEndTag(xpp, "Period"));
 
@@ -219,7 +217,7 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
 
   // AdaptationSet parsing.
 
-  protected AdaptationSet parseAdaptationSet(XmlPullParser xpp, List<String> baseUrls,
+  protected AdaptationSet parseAdaptationSet(XmlPullParser xpp, List<String> parentBaseUrls,
       SegmentBase segmentBase) throws XmlPullParserException, IOException {
     int id = parseInt(xpp, "id", -1);
     int contentType = parseContentType(xpp);
@@ -232,17 +230,14 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
     int audioChannels = -1;
     int audioSamplingRate = parseInt(xpp, "audioSamplingRate", -1);
     String language = xpp.getAttributeValue(null, "lang");
+    List<String> baseUrls = new ArrayList<>();
 
     ContentProtectionsBuilder contentProtectionsBuilder = new ContentProtectionsBuilder();
     List<Representation> representations = new ArrayList<>();
-    boolean seenFirstBaseUrl = false;
     do {
       xpp.next();
       if (ParserUtil.isStartTag(xpp, "BaseURL")) {
-        if (!seenFirstBaseUrl) {
-          baseUrls.add(parseBaseUrl(xpp, "")); // TODO: Again, what to use for relative resolution?
-          seenFirstBaseUrl = true;
-        }
+        baseUrls.addAll(parseBaseUrls(xpp, parentBaseUrls));
       } else if (ParserUtil.isStartTag(xpp, "ContentProtection")) {
         ContentProtection contentProtection = parseContentProtection(xpp);
         if (contentProtection != null) {
@@ -252,7 +247,7 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
         language = checkLanguageConsistency(language, xpp.getAttributeValue(null, "lang"));
         contentType = checkContentTypeConsistency(contentType, parseContentType(xpp));
       } else if (ParserUtil.isStartTag(xpp, "Representation")) {
-        Representation representation = parseRepresentation(xpp, baseUrls, mimeType, codecs, width,
+        Representation representation = parseRepresentation(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, mimeType, codecs, width,
             height, frameRate, audioChannels, audioSamplingRate, language, segmentBase,
             contentProtectionsBuilder);
         contentProtectionsBuilder.endRepresentation();
@@ -261,11 +256,11 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
       } else if (ParserUtil.isStartTag(xpp, "AudioChannelConfiguration")) {
         audioChannels = parseAudioChannelConfiguration(xpp);
       } else if (ParserUtil.isStartTag(xpp, "SegmentBase")) {
-        segmentBase = parseSegmentBase(xpp, baseUrls, (SingleSegmentBase) segmentBase);
+        segmentBase = parseSegmentBase(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, (SingleSegmentBase) segmentBase);
       } else if (ParserUtil.isStartTag(xpp, "SegmentList")) {
-        segmentBase = parseSegmentList(xpp, baseUrls, (SegmentList) segmentBase);
+        segmentBase = parseSegmentList(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, (SegmentList) segmentBase);
       } else if (ParserUtil.isStartTag(xpp, "SegmentTemplate")) {
-        segmentBase = parseSegmentTemplate(xpp, baseUrls, (SegmentTemplate) segmentBase);
+        segmentBase = parseSegmentTemplate(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, (SegmentTemplate) segmentBase);
       } else if (ParserUtil.isStartTag(xpp)) {
         parseAdaptationSetChild(xpp);
       }
@@ -356,7 +351,7 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
 
   // Representation parsing.
 
-  protected Representation parseRepresentation(XmlPullParser xpp, List<String> baseUrls,
+  protected Representation parseRepresentation(XmlPullParser xpp, List<String> parentBaseUrls,
       String adaptationSetMimeType, String adaptationSetCodecs, int adaptationSetWidth,
       int adaptationSetHeight, float adaptationSetFrameRate, int adaptationSetAudioChannels,
       int adaptationSetAudioSamplingRate, String adaptationSetLanguage, SegmentBase segmentBase,
@@ -373,23 +368,20 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
     int audioChannels = adaptationSetAudioChannels;
     int audioSamplingRate = parseInt(xpp, "audioSamplingRate", adaptationSetAudioSamplingRate);
     String language = adaptationSetLanguage;
+    List<String> baseUrls = new ArrayList<>();
 
-    boolean seenFirstBaseUrl = false;
     do {
       xpp.next();
       if (ParserUtil.isStartTag(xpp, "BaseURL")) {
-        if (!seenFirstBaseUrl) {
-          baseUrls.add(parseBaseUrl(xpp, "")); // TODO: What to use for relative resolution?
-          seenFirstBaseUrl = true;
-        }
+        baseUrls.addAll(parseBaseUrls(xpp, parentBaseUrls));
       } else if (ParserUtil.isStartTag(xpp, "AudioChannelConfiguration")) {
         audioChannels = parseAudioChannelConfiguration(xpp);
       } else if (ParserUtil.isStartTag(xpp, "SegmentBase")) {
-        segmentBase = parseSegmentBase(xpp, baseUrls, (SingleSegmentBase) segmentBase);
+        segmentBase = parseSegmentBase(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, (SingleSegmentBase) segmentBase);
       } else if (ParserUtil.isStartTag(xpp, "SegmentList")) {
-        segmentBase = parseSegmentList(xpp, baseUrls, (SegmentList) segmentBase);
+        segmentBase = parseSegmentList(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, (SegmentList) segmentBase);
       } else if (ParserUtil.isStartTag(xpp, "SegmentTemplate")) {
-        segmentBase = parseSegmentTemplate(xpp, baseUrls, (SegmentTemplate) segmentBase);
+        segmentBase = parseSegmentTemplate(xpp, baseUrls.isEmpty() ? parentBaseUrls : baseUrls, (SegmentTemplate) segmentBase);
       } else if (ParserUtil.isStartTag(xpp, "ContentProtection")) {
         ContentProtection contentProtection = parseContentProtection(xpp);
         if (contentProtection != null) {
@@ -401,7 +393,7 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
     Format format = buildFormat(id, mimeType, width, height, frameRate, audioChannels,
         audioSamplingRate, bandwidth, language, codecs);
     return buildRepresentation(contentId, -1, format,
-        segmentBase != null ? segmentBase : new SingleSegmentBase(baseUrls));
+        segmentBase != null ? segmentBase : new SingleSegmentBase(baseUrls.isEmpty() ? parentBaseUrls : baseUrls));
   }
 
   protected Format buildFormat(String id, String mimeType, int width, int height, float frameRate,
@@ -695,6 +687,12 @@ public class MediaPresentationDescriptionParser extends DefaultHandler
     } else {
       return Util.parseXsDateTime(value);
     }
+  }
+
+  protected static List<String> parseBaseUrls(XmlPullParser xpp, List<String> parentBaseUrls)
+    throws XmlPullParserException, IOException {
+    xpp.next();
+    return UriUtil.resolve(parentBaseUrls, xpp.getText());
   }
 
   protected static String parseBaseUrl(XmlPullParser xpp, String parentBaseUrl)
