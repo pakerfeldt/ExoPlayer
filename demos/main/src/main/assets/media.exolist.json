@@ -404,12 +404,12 @@
         "uri": "https://storage.googleapis.com/exoplayer-test-media-1/gen-3/screens/dash-vod-single-segment/audio-141.mp4"
       },
       {
-        "name": "Google Play (MP3 Audio)",
-        "uri": "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3"
+        "name": "Stalling BBC podcast episode (MP3 Audio)",
+        "uri": "https://open.live.bbc.co.uk/mediaselector/5/redir/version/2.0/mediaset/audio-nondrm-download/proto/https/vpid/p06z3pmk.mp3"
       },
       {
-        "name": "Google Play (Ogg/Vorbis Audio)",
-        "uri": "https://storage.googleapis.com/exoplayer-test-media-1/ogg/play.ogg"
+        "name": "Non-stalling (?) NPR (MP3 Audio)",
+        "uri": "https://play.podtrac.com/npr-510289/npr.mc.tritondigital.com/NPR_510289/media/anon.npr-mp3/npr/pmoney/2019/01/20190130_pmoney_pmpod825_rerun.mp3?orgId=1&d=1274&p=510289&story=690140031&t=podcast&e=690140031&ft=pod&f=510289"
       },
       {
         "name": "Big Buck Bunny (FLV Video)",
