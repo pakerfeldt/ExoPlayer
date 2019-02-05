@@ -19,6 +19,8 @@ import static com.google.android.exoplayer2.util.Util.castNonNull;
 
 import android.net.Uri;
 import android.support.annotation.Nullable;
+import android.util.Log;
+
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlayerLibraryInfo;
 import com.google.android.exoplayer2.upstream.BaseDataSource;
@@ -32,6 +34,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.net.SocketTimeoutException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -154,16 +157,21 @@ public class OkHttpDataSource extends BaseDataSource implements HttpDataSource {
     transferInitializing(dataSpec);
 
     Request request = makeRequest(dataSpec);
+    String range = request.header("Range") != null ? request.header("Range") : "<null>";
+    Log.e("BETAMAX", header("Opening") + "bytes = " + range);
     Response response;
     ResponseBody responseBody;
     try {
+      Log.e("BETAMAX", header("Execute request"));
       this.response = callFactory.newCall(request).execute();
+      Log.e("BETAMAX", header("Response"));
       response = this.response;
       responseBody = Assertions.checkNotNull(response.body());
       responseByteStream = responseBody.byteStream();
     } catch (IOException e) {
+      Log.e("BETAMAX", header("Exception") + e.getClass().getCanonicalName());
       throw new HttpDataSourceException(
-          "Unable to connect to " + dataSpec.uri, e, dataSpec, HttpDataSourceException.TYPE_OPEN);
+                "Unable to connect to " + dataSpec.uri, e, dataSpec, HttpDataSourceException.TYPE_OPEN);
     }
 
     int responseCode = response.code();
@@ -202,14 +210,20 @@ public class OkHttpDataSource extends BaseDataSource implements HttpDataSource {
     }
 
     opened = true;
+    Log.e("BETAMAX", header("Opened"));
     transferStarted(dataSpec);
 
     return bytesToRead;
   }
 
+  private String header(String method) {
+    return method + ": "; // + " (" + hashCode() + ", " + Thread.currentThread().getName() + "): ";
+  }
+
   @Override
   public int read(byte[] buffer, int offset, int readLength) throws HttpDataSourceException {
     try {
+      Log.e("BETAMAX", header("Reading") + readLength);
       skipInternal();
       return readInternal(buffer, offset, readLength);
     } catch (IOException e) {
@@ -220,6 +234,7 @@ public class OkHttpDataSource extends BaseDataSource implements HttpDataSource {
 
   @Override
   public void close() throws HttpDataSourceException {
+    Log.e("BETAMAX", header("Close"));
     if (opened) {
       opened = false;
       transferEnded();
@@ -380,6 +395,7 @@ public class OkHttpDataSource extends BaseDataSource implements HttpDataSource {
    */
   private void closeConnectionQuietly() {
     if (response != null) {
+      Log.e("BETAMAX", header("Closing body"));
       Assertions.checkNotNull(response.body()).close();
       response = null;
     }

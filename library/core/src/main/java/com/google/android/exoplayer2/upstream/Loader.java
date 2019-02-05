@@ -356,6 +356,7 @@ public final class Loader implements LoaderErrorThrower {
         canceled = true;
         loadable.cancelLoad();
         if (executorThread != null) {
+          Log.e("BETAMAX", "Interrupting");// (" + executorThread.getName() + ")");
           executorThread.interrupt();
         }
       }
